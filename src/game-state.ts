@@ -15,8 +15,10 @@ export class GameState {
   private raycaster = new THREE.Raycaster();
   private pointer: { x: number; y: number } = { x: 0, y: 0 };
   private polySynth = new Tone.PolySynth().toDestination();
-  private playingKeys: string[] = [];
-  private keyPositions = new Map<string, number>();
+  private pressedKeys: string[] = [];
+  private pressedButtons = new Set<string>();
+  private restPositions = new Map<string, number>();
+  private powerOn = false;
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -26,11 +28,11 @@ export class GameState {
     this.camera = new THREE.PerspectiveCamera(
       75,
       canvas.clientWidth / canvas.clientHeight,
-      0.1,
-      100
+      0.01,
+      10
     );
-    this.camera.position.z = 1.6;
-    this.camera.position.y = 1.2;
+    this.camera.position.z = 0.25;
+    this.camera.position.y = 0.3;
 
     // Setup renderer
     this.renderer = new THREE.WebGLRenderer({ canvas });
@@ -88,9 +90,14 @@ export class GameState {
       ].forEach((key) => {
         const object = this.keyboard?.getObjectByName(`Key_${key}`);
         if (object) {
-          this.keyPositions.set(key, object.position.y);
+          this.restPositions.set(key, object.position.y);
         }
       });
+
+      const powerButton = this.keyboard.getObjectByName("powerButton");
+      if (powerButton) {
+        this.restPositions.set("powerButton", powerButton.position.y);
+      }
 
       this.scene.add(this.keyboard);
     }
@@ -147,11 +154,61 @@ export class GameState {
     // Get object hit
     const object = intersects[0].object;
 
-    // Was it a key?
-    if (!object.name.includes("Key")) {
+    switch (object.name) {
+      case "powerButton":
+        this.pressPowerButton(object);
+        break;
+      default: {
+        // Was it a key?
+        if (object.name.includes("Key")) {
+          this.pressKey(object);
+        }
+      }
+    }
+  };
+
+  private pressPowerButton(button: THREE.Object3D) {
+    // Can only be pressing once
+    if (this.pressedButtons.has(button.name)) {
       return;
     }
 
+    this.powerOn = !this.powerOn;
+    this.pressedButtons.add(button.name);
+
+    // Animate press
+    const restPosition = this.restPositions.get(button.name);
+    if (restPosition) {
+      const pressedPosition = restPosition - 0.002;
+
+      const pressTimeline = gsap.timeline();
+      pressTimeline.to(button.position, { duration: 0.2, y: pressedPosition });
+      pressTimeline.to(button.position, {
+        duration: 0.2,
+        y: restPosition,
+        delay: 0.1,
+        onComplete: () => {
+          this.pressedButtons.delete(button.name);
+        },
+      });
+
+      pressTimeline.play();
+    }
+
+    // Change material colour
+    const led =
+      this.keyboard?.getObjectByName("powerButtonHousing")?.children[1];
+    if (led) {
+      const mesh = led as THREE.Mesh;
+      const material = mesh.material as THREE.MeshStandardMaterial;
+
+      const color = this.powerOn ? "green" : "red";
+      material.color.setColorName(color);
+      material.emissive.setColorName(color);
+    }
+  }
+
+  private pressKey(object: THREE.Object3D) {
     // Get key name only for Tone
     const name = object.name.split("_")[1];
     if (!name) {
@@ -159,30 +216,34 @@ export class GameState {
     }
 
     // Cannot play same key over itself
-    if (this.playingKeys.includes(name)) {
+    if (this.pressedKeys.includes(name)) {
       return;
     }
 
-    // Play this key
-    this.playingKeys.push(name);
-    this.polySynth.triggerAttack(name);
+    this.pressedKeys.push(name);
 
-    const restPosition = this.keyPositions.get(name);
+    // Animate key press
+    const restPosition = this.restPositions.get(name);
     if (restPosition !== undefined) {
       const pressAmount = name.includes("#") ? 0.005 : 0.01;
 
       const pressedPosition = restPosition - pressAmount;
       gsap.to(object.position, { duration: 0.3, y: pressedPosition });
     }
-  };
+
+    // Sound the key - if the power is on!
+    if (this.powerOn) {
+      this.polySynth.triggerAttack(name);
+    }
+  }
 
   private onPointerUp = () => {
     // Stop playing keys
-    this.playingKeys.forEach((key) => {
+    this.pressedKeys.forEach((key) => {
       this.polySynth.triggerRelease(key);
 
       const object = this.keyboard?.getObjectByName(`Key_${key}`);
-      const restPosition = this.keyPositions.get(key);
+      const restPosition = this.restPositions.get(key);
       if (object && restPosition !== undefined) {
         gsap.to(object.position, {
           duration: 0.3,
@@ -190,6 +251,6 @@ export class GameState {
         });
       }
     });
-    this.playingKeys = [];
+    this.pressedKeys = [];
   };
 }
