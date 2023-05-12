@@ -1,12 +1,14 @@
 import * as THREE from "three";
 import * as Tone from "tone";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
+import { gsap } from "gsap";
 
 import { GameLoader } from "./loaders/game-loader";
 import { addGui } from "./utils/utils";
 
 export class GameState {
   private scene = new THREE.Scene();
+  private keyboard?: THREE.Object3D;
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
   private controls: OrbitControls;
@@ -14,6 +16,7 @@ export class GameState {
   private pointer: { x: number; y: number } = { x: 0, y: 0 };
   private polySynth = new Tone.PolySynth().toDestination();
   private playingKeys: string[] = [];
+  private keyPositions = new Map<string, number>();
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -53,10 +56,43 @@ export class GameState {
     this.scene.add(directLight);
 
     // Add box
-    const box = this.gameLoader.modelLoader.get("keyboard");
-    if (box) {
-      addGui(box, "box");
-      this.scene.add(box);
+    this.keyboard = this.gameLoader.modelLoader.get("keyboard");
+    if (this.keyboard) {
+      // Set the original key positions for animating to/from on press
+      [
+        "C3",
+        "C#3",
+        "D3",
+        "D#3",
+        "E3",
+        "F3",
+        "F#3",
+        "G3",
+        "G#3",
+        "A3",
+        "A#3",
+        "B3",
+        "C4",
+        "C#4",
+        "D4",
+        "D#4",
+        "E4",
+        "F4",
+        "F#4",
+        "G4",
+        "G#4",
+        "A4",
+        "A#4",
+        "B4",
+        "C5",
+      ].forEach((key) => {
+        const object = this.keyboard?.getObjectByName(`Key_${key}`);
+        if (object) {
+          this.keyPositions.set(key, object.position.y);
+        }
+      });
+
+      this.scene.add(this.keyboard);
     }
 
     // Input listeners
@@ -130,11 +166,30 @@ export class GameState {
     // Play this key
     this.playingKeys.push(name);
     this.polySynth.triggerAttack(name);
+
+    const restPosition = this.keyPositions.get(name);
+    if (restPosition !== undefined) {
+      const pressAmount = name.includes("#") ? 0.005 : 0.01;
+
+      const pressedPosition = restPosition - pressAmount;
+      gsap.to(object.position, { duration: 0.3, y: pressedPosition });
+    }
   };
 
   private onPointerUp = () => {
     // Stop playing keys
-    this.playingKeys.forEach((key) => this.polySynth.triggerRelease(key));
+    this.playingKeys.forEach((key) => {
+      this.polySynth.triggerRelease(key);
+
+      const object = this.keyboard?.getObjectByName(`Key_${key}`);
+      const restPosition = this.keyPositions.get(key);
+      if (object && restPosition !== undefined) {
+        gsap.to(object.position, {
+          duration: 0.3,
+          y: restPosition,
+        });
+      }
+    });
     this.playingKeys = [];
   };
 }
