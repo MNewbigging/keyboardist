@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader";
+import * as Tone from "tone";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 
 import { GameLoader } from "./loaders/game-loader";
@@ -10,6 +10,10 @@ export class GameState {
   private camera: THREE.PerspectiveCamera;
   private renderer: THREE.WebGLRenderer;
   private controls: OrbitControls;
+  private raycaster = new THREE.Raycaster();
+  private pointer: { x: number; y: number } = { x: 0, y: 0 };
+  private polySynth = new Tone.PolySynth().toDestination();
+  private playingKeys: string[] = [];
 
   constructor(
     private canvas: HTMLCanvasElement,
@@ -36,7 +40,7 @@ export class GameState {
     window.addEventListener("resize", this.onCanvasResize);
     this.onCanvasResize();
 
-    this.scene.background = new THREE.Color("#1680AF");
+    this.scene.background = new THREE.Color("#c04df9");
 
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
@@ -49,11 +53,16 @@ export class GameState {
     this.scene.add(directLight);
 
     // Add box
-    const box = this.gameLoader.modelLoader.get("box");
+    const box = this.gameLoader.modelLoader.get("keyboard");
     if (box) {
       addGui(box, "box");
       this.scene.add(box);
     }
+
+    // Input listeners
+    document.addEventListener("mousemove", this.onMouseMove);
+    document.addEventListener("pointerdown", this.onPointerDown);
+    document.addEventListener("pointerup", this.onPointerUp);
 
     // Start game
     this.update();
@@ -78,5 +87,54 @@ export class GameState {
 
     this.renderer.render(this.scene, this.camera);
     this.controls.update();
+  };
+
+  private getPointerPosition(event: MouseEvent) {
+    this.pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+    this.pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  }
+
+  private onMouseMove = (event: MouseEvent) => {
+    this.getPointerPosition(event);
+  };
+
+  private onPointerDown = (event: PointerEvent) => {
+    this.getPointerPosition(event);
+
+    this.raycaster.setFromCamera(this.pointer, this.camera);
+
+    const intersects = this.raycaster.intersectObjects(this.scene.children);
+    if (!intersects.length) {
+      return;
+    }
+
+    // Get object hit
+    const object = intersects[0].object;
+
+    // Was it a key?
+    if (!object.name.includes("Key")) {
+      return;
+    }
+
+    // Get key name only for Tone
+    const name = object.name.split("_")[1];
+    if (!name) {
+      return;
+    }
+
+    // Cannot play same key over itself
+    if (this.playingKeys.includes(name)) {
+      return;
+    }
+
+    // Play this key
+    this.playingKeys.push(name);
+    this.polySynth.triggerAttack(name);
+  };
+
+  private onPointerUp = () => {
+    // Stop playing keys
+    this.playingKeys.forEach((key) => this.polySynth.triggerRelease(key));
+    this.playingKeys = [];
   };
 }
