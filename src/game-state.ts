@@ -28,7 +28,7 @@ export class GameState {
     this.camera.position.y = 0.3;
 
     // Setup renderer
-    this.renderer = new THREE.WebGLRenderer({ canvas });
+    this.renderer = new THREE.WebGLRenderer({ canvas, alpha: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     THREE.ColorManagement.legacyMode = false;
     this.renderer.outputEncoding = THREE.sRGBEncoding;
@@ -38,7 +38,7 @@ export class GameState {
     window.addEventListener("resize", this.onCanvasResize);
     this.onCanvasResize();
 
-    this.scene.background = new THREE.Color("#c04df9");
+    //this.scene.background = new THREE.Color("#5a2db4");
 
     this.controls = new OrbitControls(this.camera, canvas);
     this.controls.enableDamping = true;
