@@ -103,9 +103,11 @@ export class GameState {
     }
 
     // Input listeners
-    document.addEventListener("mousemove", this.onMouseMove);
-    document.addEventListener("pointerdown", this.onPointerDown);
-    document.addEventListener("pointerup", this.onPointerUp);
+
+    document.addEventListener("mousedown", this.onMouseDown);
+    document.addEventListener("mouseup", this.onMouseUp);
+    document.addEventListener("touchstart", this.onTouchStart);
+    document.addEventListener("touchend", this.onTouchEnd);
 
     // Start game
     this.update();
@@ -132,18 +134,37 @@ export class GameState {
     this.controls.update();
   };
 
-  private getPointerPosition(event: MouseEvent) {
-    this.pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
-    this.pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+  private getPointerPosition(x: number, y: number) {
+    this.pointer.x = (x / window.innerWidth) * 2 - 1;
+    this.pointer.y = -(y / window.innerHeight) * 2 + 1;
   }
 
-  private onMouseMove = (event: MouseEvent) => {
-    this.getPointerPosition(event);
+  private onMouseDown = (event: MouseEvent) => {
+    this.getPointerPosition(event.clientX, event.clientY);
+
+    this.intersectCheck();
   };
 
-  private onPointerDown = (event: PointerEvent) => {
-    this.getPointerPosition(event);
+  private onMouseUp = () => {
+    // Stop playing keys
+    this.resetKeys();
+  };
 
+  private onTouchStart = (event: TouchEvent) => {
+    if (event.changedTouches.length) {
+      this.getPointerPosition(
+        event.changedTouches[0].clientX,
+        event.changedTouches[0].clientY
+      );
+      this.intersectCheck();
+    }
+  };
+
+  private onTouchEnd = () => {
+    this.resetKeys();
+  };
+
+  private intersectCheck() {
     this.raycaster.setFromCamera(this.pointer, this.camera);
 
     const intersects = this.raycaster.intersectObjects(this.scene.children);
@@ -165,7 +186,23 @@ export class GameState {
         }
       }
     }
-  };
+  }
+
+  private resetKeys() {
+    this.pressedKeys.forEach((key) => {
+      this.polySynth.triggerRelease(key);
+
+      const object = this.keyboard?.getObjectByName(`Key_${key}`);
+      const restPosition = this.restPositions.get(key);
+      if (object && restPosition !== undefined) {
+        gsap.to(object.position, {
+          duration: 0.3,
+          y: restPosition,
+        });
+      }
+    });
+    this.pressedKeys = [];
+  }
 
   private pressPowerButton(button: THREE.Object3D) {
     // Can only be pressing once
@@ -236,21 +273,4 @@ export class GameState {
       this.polySynth.triggerAttack(name);
     }
   }
-
-  private onPointerUp = () => {
-    // Stop playing keys
-    this.pressedKeys.forEach((key) => {
-      this.polySynth.triggerRelease(key);
-
-      const object = this.keyboard?.getObjectByName(`Key_${key}`);
-      const restPosition = this.restPositions.get(key);
-      if (object && restPosition !== undefined) {
-        gsap.to(object.position, {
-          duration: 0.3,
-          y: restPosition,
-        });
-      }
-    });
-    this.pressedKeys = [];
-  };
 }
